@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 
-n=202
+n=2501
 
 random_matrix = np.random.rand(n,n);
 
