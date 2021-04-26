@@ -77,6 +77,10 @@ int main(int argc,char* argv[]){
 	int padding = N-N%num_threads;
 	if(padding==N)padding=0;
 
+	if(comm_sz>N){
+		padding = comm_sz-N;
+	}
+
 	n = N + padding;
 
 	double (*A)[n] = (double(*)[n])malloc(sizeof(*A)*n);
@@ -212,7 +216,7 @@ int main(int argc,char* argv[]){
 
 	if(my_rank==0){
 		end = MPI_Wtime();
-		printf("strategy4 CROUT: %0.12f\n",end-start);
+		printf("strategy 4 CROUT: %0.12f\n",end-start);
 	}
 
 	if(my_rank==0){
@@ -248,7 +252,7 @@ int main(int argc,char* argv[]){
 	  
 	if(my_rank==0){
 		end_main = MPI_Wtime();
-		printf("strategy4 MAIN: %0.12f\n",end_main-start_main);
+		printf("strategy 4 MAIN: %0.12f\n",end_main-start_main);
 	}
 
 	MPI_Finalize();
