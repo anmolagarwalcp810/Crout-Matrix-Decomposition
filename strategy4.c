@@ -234,7 +234,7 @@ int main(int argc,char* argv[]){
 				sum = sum + sub_L[i][k] * U[j][k];
 			}
 			// printf("my_rank %d, i %d,j %d,A[%d][%d]:%0.12f ,sum %0.12f\n",my_rank,i,j,my_rank*chunk+ i,j,A[my_rank*chunk+ i][j],sum);
-			sub_L[i][j]=A[my_rank*chunk+ i][j] - sum;
+			sub_L[i][j]=A[j+my_rank*chunk+ i][j] - sum;
 		}
 
 		// MPI_Gather(sub_L,chunk*n,MPI_DOUBLE,&(L[0][0]),chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
@@ -262,7 +262,7 @@ int main(int argc,char* argv[]){
 			for(k = 0; k < j; k++) {
 				sum = sum + L[j][k] * sub_U[i][k];
 			} 
-			sub_U[i][j] =(A[j][chunk*my_rank+i] - sum) / L[j][j];
+			sub_U[i][j] =(A[j][j+chunk*my_rank+i] - sum) / L[j][j];
 		}
 		// MPI_Gather(sub_U,chunk*n,MPI_DOUBLE,&(U[0][0]),chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
 		MPI_Gatherv(sub_U,rec_counts[my_rank],MPI_DOUBLE,&(U[j][0]),rec_counts,displs,MPI_DOUBLE,0,MPI_COMM_WORLD);
