@@ -102,9 +102,14 @@ int main(int argc,char* argv[]){
 	
 	// int (*arr)[COLS] = malloc(sizeof *arr * ROWS);
 
+	double initStart,intiEnd;
+	if(my_rank==0) initStart = MPI_Wtime();
+
 	double (*A)[n] = (double(*)[n])malloc(sizeof(*A)*n);
 	double (*L)[n] = (double(*)[n])malloc(sizeof(*L)*n);
 	double (*U)[n] = (double(*)[n])malloc(sizeof(*U)*n);
+
+
 
 	if(my_rank==0){
 		
@@ -132,13 +137,26 @@ int main(int argc,char* argv[]){
 		// take transpose of U
 	}	
 
-	if(my_rank==0){
-		start = MPI_Wtime();
-	}
+
+	double bStart,bEnd;
+	if(my_rank==0)bStart = MPI_Wtime();
+
+	// if(my_rank==0){
+	// 	start = MPI_Wtime();
+	// }
 
 	MPI_Bcast(&(A[0][0]),n*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
 
+	if(my_rank==0){
+		bEnd = MPI_Wtime();
+		printf("bCAST: %0.12f\n",bEnd-bStart);
+	}
 	// CROUT MATRIX DECOMPOSITION STARTS HERE
+
+
+	if(my_rank==0){
+		start = MPI_Wtime();
+	}
 
 	int i, j, k;
 	double sum = 0;
@@ -148,29 +166,66 @@ int main(int argc,char* argv[]){
 	double (*sub_L)[n] = (double(*)[n])malloc(sizeof(*sub_L)*chunk);
 	double (*sub_U)[n] = (double(*)[n])malloc(sizeof(*sub_U)*chunk);
 	int left_i,right_i;
+
+	// Add displs, count for scatterv,gatherv
+
+	int* displs = (int*)malloc(comm_sz*sizeof(int));
+	int* rec_counts = (int*)malloc(comm_sz*sizeof(int));
+
+
 	MPI_Barrier(MPI_COMM_WORLD);
 
+	double tempStart,tempEnd;
+
+	double totalTemp=0;
+
 	for (j=0; j<n; j++) {
-		// First do with scatter, then try with scatterv() later.
-		MPI_Scatter(&(L[0][0]),chunk*n,MPI_DOUBLE,sub_L,chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
-		MPI_Bcast(U[j],n,MPI_DOUBLE,0,MPI_COMM_WORLD);
-		MPI_Barrier(MPI_COMM_WORLD);
+
+		chunk = (n-j+1)/comm_sz;
+		displs[0]=0;
+		for(int m=0;m<comm_sz;m++){
+			rec_counts[m] = chunk;
+			if(m==comm_sz-1){
+				rec_counts[m]=(n-j+1)-(comm_sz-1)*chunk;
+			}
+			if(m>0){
+				/* different displacements for each process
+				   but we want the scattered and gathered data compressed, 
+				   hence displs[m]-displs[m-1]=rec_counts[m]
+				*/
+				displs[m]=displs[m-1]+rec_counts[m];
+			}
+		}
+
+		// reset left_i, right_i
 
 		/* Allocating iteration ranges */
-		if(my_rank*chunk>=j){
-			left_i=0;
-			right_i=chunk;
+		// if(my_rank*chunk>=j){
+		// 	left_i=0;
+		// 	right_i=chunk;
+		// }
+		// else{
+		// 	if(j-my_rank*chunk<chunk){
+		// 		left_i=j-my_rank*chunk;
+		// 		right_i=chunk;
+		// 	}
+		// 	else{
+		// 		left_i=0;
+		// 		right_i=-1;
+		// 	}
+		// }
+
+		left_i = my_rank*chunk;
+		right_i = left_i+chunk;
+		if(my_rank==comm_sz-1){
+			right_i = n;
 		}
-		else{
-			if(j-my_rank*chunk<chunk){
-				left_i=j-my_rank*chunk;
-				right_i=chunk;
-			}
-			else{
-				left_i=0;
-				right_i=-1;
-			}
-		}
+
+		MPI_Scatterv(&(L[j][0]),rec_counts,displs,MPI_DOUBLE,sub_L,rec_counts[my_rank],MPI_DOUBLE,0,MPI_COMM_WORLD);
+
+		// MPI_Scatter(&(L[0][0]),chunk*n,MPI_DOUBLE,sub_L,chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		MPI_Bcast(U[j],n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		// L's Loop
 		for (i = left_i; i < right_i; i++) {
@@ -182,7 +237,8 @@ int main(int argc,char* argv[]){
 			sub_L[i][j]=A[my_rank*chunk+ i][j] - sum;
 		}
 
-		MPI_Gather(sub_L,chunk*n,MPI_DOUBLE,&(L[0][0]),chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		// MPI_Gather(sub_L,chunk*n,MPI_DOUBLE,&(L[0][0]),chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		MPI_Gatherv(sub_L,rec_counts[my_rank],MPI_DOUBLE,&(L[j][0]),rec_counts,displs,MPI_DOUBLE,0,MPI_COMM_WORLD);
 		MPI_Barrier(MPI_COMM_WORLD);
 
 		// Checking for L[j][j]==0 once
@@ -195,7 +251,8 @@ int main(int argc,char* argv[]){
 			} 
 		}
 		
-		MPI_Scatter(&(U[0][0]),chunk*n,MPI_DOUBLE,sub_U,chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		MPI_Scatterv(&(U[j][0]),rec_counts,displs,MPI_DOUBLE,sub_U,rec_counts[my_rank],MPI_DOUBLE,0,MPI_COMM_WORLD);
+		// MPI_Scatter(&(U[0][0]),chunk*n,MPI_DOUBLE,sub_U,chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
 		MPI_Bcast(L[j],n,MPI_DOUBLE,0,MPI_COMM_WORLD);
 		MPI_Barrier(MPI_COMM_WORLD);
 
@@ -207,8 +264,8 @@ int main(int argc,char* argv[]){
 			} 
 			sub_U[i][j] =(A[j][chunk*my_rank+i] - sum) / L[j][j];
 		}
-		MPI_Gather(sub_U,chunk*n,MPI_DOUBLE,&(U[0][0]),chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
-
+		// MPI_Gather(sub_U,chunk*n,MPI_DOUBLE,&(U[0][0]),chunk*n,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		MPI_Gatherv(sub_U,rec_counts[my_rank],MPI_DOUBLE,&(U[j][0]),rec_counts,displs,MPI_DOUBLE,0,MPI_COMM_WORLD);
 		// Placed barrier at the end, so that all processes complete before going to next loop
 		MPI_Barrier(MPI_COMM_WORLD);
 	}
@@ -217,13 +274,16 @@ int main(int argc,char* argv[]){
 
 	// CROUT MATRIX DECOMPOSITION ENDS HERE
 
-	// Convert double[][] to double** here before calling print_matrix()
-	// scatter only works with double[][]
-	// if we try double**, then 1. not contiguous, 2. we might place burden on process 0 to scatter data.
+	/* 
+	   Convert double[][] to double** here before calling print_matrix()
+	   scatter only works with double[][]
+	   if we try double**, then 1. not contiguous, 2. we might place burden on process 0 to scatter data.
+	*/
 
 	if(my_rank==0){
 		end = MPI_Wtime();
 		printf("strategy4 CROUT: %0.12f\n",end-start);
+		printf("Total Accumulation: %0.12f\n",totalTemp );
 	}
 
 	if(my_rank==0){
