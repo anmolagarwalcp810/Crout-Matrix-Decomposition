@@ -1,13 +1,28 @@
-#!/bin/sh
+N=$1
+INPUT_MATRIX=$2
+NUM_THREADS=$3
+STRATEGY=$4
 
-N = $1
-INPUT_MATRIX = $2
-NUM_THREADS = $3
-STRATEGY = $4
+# echo $N
+# echo $INPUT_MATRIX
+# echo $NUM_THREADS
+# echo $STRATEGY
 
-echo $N
-echo $INPUT_MATRIX
-echo $NUM_THREADS
-echo $STRATEGY
-echo $1
-
+if [ $STRATEGY == 0 ]
+then
+	./0 $N $INPUT_MATRIX $NUM_THREADS
+elif [ $STRATEGY == 1 ]
+then
+	./1 $N $INPUT_MATRIX $NUM_THREADS
+elif [ $STRATEGY == 2 ]
+then
+	./2 $N $INPUT_MATRIX $NUM_THREADS
+elif [ $STRATEGY == 3 ]
+then
+	./3 $N $INPUT_MATRIX $NUM_THREADS
+elif [ $STRATEGY == 4 ]
+then
+	mpiexec -n $NUM_THREADS ./4 $N $INPUT_MATRIX $NUM_THREADS
+else
+	echo "INCORRECT STRATEGY"
+fi
